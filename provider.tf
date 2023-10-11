@@ -1,4 +1,6 @@
 terraform {
+  required_version = ">= 1.0"
+
   required_providers {
     ncloud = {
       source  = "NaverCloudPlatform/ncloud"
@@ -14,26 +16,4 @@ provider "ncloud" {
   region      = var.region
   site        = var.site
   support_vpc = var.support_vpc
-}
-
-variable "access_key" {
-  type      = string
-  sensitive = true
-}
-
-variable "secret_key" {
-  type      = string
-  sensitive = true
-}
-
-variable "region" {
-  type = string
-}
-
-variable "site" {
-  type = string
-}
-
-variable "support_vpc" {
-  type = string
 }
