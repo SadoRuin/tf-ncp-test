@@ -29,42 +29,37 @@ module "tf_test_vpc" {
       subnet_type = "PRIVATE"
       name        = "tf-test-db-sbn"
       usage_type  = "GEN"
+    },
+    {
+      subnet      = "10.0.3.0/24"
+      zone        = "KR-1"
+      subnet_type = "PRIVATE"
+      name        = "tf-test-alb-sbn"
+      usage_type  = "LOADB"
+    },
+    {
+      subnet      = "10.0.4.0/24"
+      zone        = "KR-1"
+      subnet_type = "PRIVATE"
+      name        = "tf-test-nlb-sbn"
+      usage_type  = "LOADB"
     }
   ]
 
   inbound_acl_rules = {
-    tf-test-web-sbn = [
-      {
-        priority    = "1"
-        protocol    = "TCP"
-        rule_action = "ALLOW"
-        ip_block    = "0.0.0.0/0"
-        port_range  = "443"
-      },
-      {
-        priority    = "2"
-        protocol    = "TCP"
-        rule_action = "ALLOW"
-        ip_block    = "0.0.0.0/0"
-        port_range  = "80"
-      }
-    ],
+    tf-test-web-sbn = [],
     tf-test-was-sbn = [],
-    tf-test-db-sbn  = []
+    tf-test-db-sbn  = [],
+    tf-test-alb-sbn = [],
+    tf-test-nlb-sbn = []
   }
 
   outbound_acl_rules = {
-    tf-test-web-sbn = [
-      {
-        priority    = "1"
-        protocol    = "TCP"
-        rule_action = "ALLOW"
-        ip_block    = "0.0.0.0/0"
-        port_range  = "1-65535"
-      }
-    ],
+    tf-test-web-sbn = [],
     tf-test-was-sbn = [],
-    tf-test-db-sbn  = []
+    tf-test-db-sbn  = [],
+    tf-test-alb-sbn = [],
+    tf-test-nlb-sbn = []
   }
 }
 
@@ -116,10 +111,10 @@ module "access_control_group" {
 module "tf_test_web_svr" {
   source = "github.com/sadoruin/terraform-ncloud-server.git"
 
-  count = 0
+  count = 2
 
   name                      = "tf-test-web-svr-${count.index}"
-  subnet_no                 = module.tf_test_vpc.subnet_ids["tf-test-web-sbn"]
+  subnet_id                 = module.tf_test_vpc.subnet_ids["tf-test-web-sbn"]
   server_image_product_code = data.ncloud_server_image.rocky_8_8.id
   server_product_code       = data.ncloud_server_product.c2_g2_h50.id
   login_key_name            = "yh-test-svr-key"
@@ -128,7 +123,7 @@ module "tf_test_web_svr" {
     {
       name                  = "tf-test-web-svr-nic-${count.index}"
       description           = "WEB Server NIC"
-      subnet_no             = module.tf_test_vpc.subnet_ids["tf-test-web-sbn"]
+      subnet_id             = module.tf_test_vpc.subnet_ids["tf-test-web-sbn"]
       access_control_groups = [module.access_control_group.acg_ids["tf-test-web-svr-acg"]]
       order                 = 0
     }
@@ -138,10 +133,10 @@ module "tf_test_web_svr" {
 module "tf_test_was_svr" {
   source = "github.com/sadoruin/terraform-ncloud-server.git"
 
-  count = 0
+  count = 2
 
   name                      = "tf-test-was-svr-${count.index}"
-  subnet_no                 = module.tf_test_vpc.subnet_ids["tf-test-was-sbn"]
+  subnet_id                 = module.tf_test_vpc.subnet_ids["tf-test-was-sbn"]
   server_image_product_code = data.ncloud_server_image.rocky_8_8.id
   server_product_code       = data.ncloud_server_product.c2_g2_h50.id
   login_key_name            = "yh-test-svr-key"
@@ -150,7 +145,7 @@ module "tf_test_was_svr" {
     {
       name                  = "tf-test-was-svr-nic-${count.index}"
       description           = "WAS Server NIC"
-      subnet_no             = module.tf_test_vpc.subnet_ids["tf-test-was-sbn"]
+      subnet_id             = module.tf_test_vpc.subnet_ids["tf-test-was-sbn"]
       access_control_groups = [module.access_control_group.acg_ids["tf-test-was-svr-acg"]]
       order                 = 0
     }
@@ -160,10 +155,10 @@ module "tf_test_was_svr" {
 module "tf_test_db_svr" {
   source = "github.com/sadoruin/terraform-ncloud-server.git"
 
-  count = 0
+  count = 1
 
   name                      = "tf-test-db-svr-${count.index}"
-  subnet_no                 = module.tf_test_vpc.subnet_ids["tf-test-db-sbn"]
+  subnet_id                 = module.tf_test_vpc.subnet_ids["tf-test-db-sbn"]
   server_image_product_code = data.ncloud_server_image.centos7_mariadb_10_2.id
   server_product_code       = data.ncloud_server_product.c2_g2_h50.id
   login_key_name            = "yh-test-svr-key"
@@ -172,7 +167,7 @@ module "tf_test_db_svr" {
     {
       name                  = "tf-test-db-svr-nic-${count.index}"
       description           = "DB Server NIC"
-      subnet_no             = module.tf_test_vpc.subnet_ids["tf-test-db-sbn"]
+      subnet_id             = module.tf_test_vpc.subnet_ids["tf-test-db-sbn"]
       access_control_groups = [module.access_control_group.acg_ids["tf-test-db-svr-acg"]]
       order                 = 0
     }
@@ -220,4 +215,89 @@ data "ncloud_server_product" "c2_g2_h50" {
       regex  = filter.key == "product_code" ? true : false
     }
   }
+}
+
+
+################################################################################
+# Load Balancer
+################################################################################
+
+module "web_alb" {
+  source = "github.com/sadoruin/terraform-ncloud-lb"
+
+  name            = "tf-test-web-alb"
+  network_type    = "PUBLIC"
+  idle_timeout    = 60
+  type            = "APPLICATION"
+  throughput_type = "SMALL"
+  subnet_no_list  = [module.tf_test_vpc.subnet_ids["tf-test-alb-sbn"]]
+  vpc_id          = module.tf_test_vpc.vpc_id
+
+  lb_listeners = [
+    {
+      protocol = "HTTP"
+      port     = 80
+      target_group = {
+        name               = "tf-test-web-alb-tg"
+        protocol           = "HTTP"
+        port               = 80
+        description        = "WEB Server Target Group"
+        use_sticky_session = false
+        use_proxy_protocol = false
+        algorithm_type     = "RR"
+        health_check = {
+          protocol       = "HTTP"
+          http_method    = "GET"
+          port           = 80
+          url_path       = "/"
+          cycle          = 30
+          up_threshold   = 2
+          down_threshold = 2
+        }
+
+        target_no_list = [
+          for x in module.tf_test_web_svr : x.server_id
+        ]
+      }
+    }
+  ]
+}
+
+module "was_nlb" {
+  source = "github.com/sadoruin/terraform-ncloud-lb"
+
+  name            = "tf-test-was-nlb"
+  network_type    = "PRIVATE"
+  idle_timeout    = 60
+  type            = "NETWORK"
+  throughput_type = "SMALL"
+  subnet_no_list  = [module.tf_test_vpc.subnet_ids["tf-test-nlb-sbn"]]
+  vpc_id          = module.tf_test_vpc.vpc_id
+
+  lb_listeners = [
+    {
+      protocol = "TCP"
+      port     = 8080
+      target_group = {
+        name               = "tf-test-web-nlb-tg"
+        protocol           = "TCP"
+        port               = 8080
+        description        = "WAS Server Target Group"
+        use_sticky_session = true
+        use_proxy_protocol = false
+        algorithm_type     = "MH"
+        health_check = {
+          protocol       = "TCP"
+          port           = 8080
+          cycle          = 30
+          up_threshold   = 2
+          down_threshold = 2
+        }
+
+        target_no_list = [
+          for x in module.tf_test_was_svr : x.server_id
+        ]
+      }
+    }
+  ]
 }
