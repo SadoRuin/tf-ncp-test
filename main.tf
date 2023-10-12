@@ -10,57 +10,51 @@ module "tf_test_vpc" {
 
   subnets = [
     {
-      subnet      = "10.0.0.0/24"
-      zone        = "KR-1"
-      subnet_type = "PUBLIC"
-      name        = "tf-test-web-sbn"
-      usage_type  = "GEN"
+      subnet             = "10.0.0.0/24"
+      zone               = "KR-1"
+      subnet_type        = "PUBLIC"
+      name               = "tf-test-web-sbn"
+      usage_type         = "GEN"
+      inbound_acl_rules  = []
+      outbound_acl_rules = []
     },
     {
-      subnet      = "10.0.1.0/24"
-      zone        = "KR-1"
-      subnet_type = "PRIVATE"
-      name        = "tf-test-was-sbn"
-      usage_type  = "GEN"
+      subnet             = "10.0.1.0/24"
+      zone               = "KR-1"
+      subnet_type        = "PRIVATE"
+      name               = "tf-test-was-sbn"
+      usage_type         = "GEN"
+      inbound_acl_rules  = []
+      outbound_acl_rules = []
     },
     {
-      subnet      = "10.0.2.0/24"
-      zone        = "KR-1"
-      subnet_type = "PRIVATE"
-      name        = "tf-test-db-sbn"
-      usage_type  = "GEN"
+      subnet             = "10.0.2.0/24"
+      zone               = "KR-1"
+      subnet_type        = "PRIVATE"
+      name               = "tf-test-db-sbn"
+      usage_type         = "GEN"
+      inbound_acl_rules  = []
+      outbound_acl_rules = []
     },
     {
-      subnet      = "10.0.3.0/24"
-      zone        = "KR-1"
-      subnet_type = "PRIVATE"
-      name        = "tf-test-alb-sbn"
-      usage_type  = "LOADB"
+      subnet             = "10.0.3.0/24"
+      zone               = "KR-1"
+      subnet_type        = "PRIVATE"
+      name               = "tf-test-alb-sbn"
+      usage_type         = "LOADB"
+      inbound_acl_rules  = []
+      outbound_acl_rules = []
     },
     {
-      subnet      = "10.0.4.0/24"
-      zone        = "KR-1"
-      subnet_type = "PRIVATE"
-      name        = "tf-test-nlb-sbn"
-      usage_type  = "LOADB"
+      subnet             = "10.0.4.0/24"
+      zone               = "KR-1"
+      subnet_type        = "PRIVATE"
+      name               = "tf-test-nlb-sbn"
+      usage_type         = "LOADB"
+      inbound_acl_rules  = []
+      outbound_acl_rules = []
     }
   ]
-
-  inbound_acl_rules = {
-    tf-test-web-sbn = [],
-    tf-test-was-sbn = [],
-    tf-test-db-sbn  = [],
-    tf-test-alb-sbn = [],
-    tf-test-nlb-sbn = []
-  }
-
-  outbound_acl_rules = {
-    tf-test-web-sbn = [],
-    tf-test-was-sbn = [],
-    tf-test-db-sbn  = [],
-    tf-test-alb-sbn = [],
-    tf-test-nlb-sbn = []
-  }
 }
 
 
@@ -73,34 +67,27 @@ module "access_control_group" {
 
   acgs = [
     {
-      name        = "tf-test-web-svr-acg"
-      vpc_id      = module.tf_test_vpc.vpc_id
-      description = "WEB Server ACG"
+      name           = "tf-test-web-svr-acg"
+      vpc_id         = module.tf_test_vpc.vpc_id
+      description    = "WEB Server ACG"
+      inbound_rules  = [var.acg_rules["ssh"], var.acg_rules["http"], var.acg_rules["https"]]
+      outbound_rules = [var.acg_rules["all"]]
     },
     {
-      name        = "tf-test-was-svr-acg"
-      vpc_id      = module.tf_test_vpc.vpc_id
-      description = "WAS Server ACG"
+      name           = "tf-test-was-svr-acg"
+      vpc_id         = module.tf_test_vpc.vpc_id
+      description    = "WAS Server ACG"
+      inbound_rules  = [var.acg_rules["tomcat"]]
+      outbound_rules = []
     },
     {
-      name        = "tf-test-db-svr-acg"
-      vpc_id      = module.tf_test_vpc.vpc_id
-      description = "DB Server ACG"
+      name           = "tf-test-db-svr-acg"
+      vpc_id         = module.tf_test_vpc.vpc_id
+      description    = "DB Server ACG"
+      inbound_rules  = [var.acg_rules["mysql"]]
+      outbound_rules = []
     }
   ]
-
-  inbound_rules = {
-    tf-test-web-svr-acg = [var.acg_rules["ssh"], var.acg_rules["http"], var.acg_rules["https"]],
-    tf-test-was-svr-acg = [var.acg_rules["tomcat"]],
-    tf-test-db-svr-acg  = [var.acg_rules["mysql"]]
-  }
-
-  outbound_rules = {
-    tf-test-web-svr-acg = [var.acg_rules["all"]],
-    tf-test-was-svr-acg = [],
-    tf-test-db-svr-acg  = []
-  }
-
 }
 
 

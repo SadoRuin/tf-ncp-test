@@ -73,7 +73,7 @@ variable "acg_rules" {
       protocol    = "TCP"
       ip_block    = "0.0.0.0/0"
       port_range  = "1-65535"
-      description = "Accept All Port"
+      description = "모든 포트 허용"
     }
   }
 }
