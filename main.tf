@@ -164,7 +164,7 @@ locals {
 module "target_groups" {
   source = "terraform-ncloud-modules/target-group/ncloud"
 
-  depends_on = [module.vpcs]
+  depends_on = [module.vpcs, module.servers]
 
   for_each = { for tg in local.target_groups : tg.name => tg }
 
