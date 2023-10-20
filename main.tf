@@ -49,6 +49,8 @@ locals {
 module "servers" {
   source = "terraform-ncloud-modules/server/ncloud"
 
+  depends_on = [module.vpcs]
+
   for_each = { for server in local.flatten_servers : server.name => server }
 
   name        = each.value.name
@@ -161,6 +163,8 @@ locals {
 
 module "target_groups" {
   source = "terraform-ncloud-modules/target-group/ncloud"
+
+  depends_on = [module.vpcs]
 
   for_each = { for tg in local.target_groups : tg.name => tg }
 
