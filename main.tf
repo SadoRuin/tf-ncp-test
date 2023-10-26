@@ -2,24 +2,91 @@
 # VPC
 ################################################################################
 
-locals {
-  vpcs = var.vpcs
-}
+module "tf_test_vpc" {
+  source = "github.com/sadoruin/terraform-ncloud-vpc.git"
 
-module "vpcs" {
-  source = "terraform-ncloud-modules/vpc/ncloud"
+  name            = "tf-test-vpc"
+  ipv4_cidr_block = "10.0.0.0/16"
 
-  for_each = { for vpc in local.vpcs : vpc.name => vpc }
 
-  name                  = each.value.name
-  ipv4_cidr_block       = each.value.ipv4_cidr_block
-  subnets               = each.value.subnets
-  network_acls          = each.value.network_acls
-  deny_allow_groups     = each.value.deny_allow_groups
-  access_control_groups = each.value.access_control_groups
-  public_route_tables   = each.value.public_route_tables
-  private_route_tables  = each.value.private_route_tables
-  nat_gateways          = each.value.nat_gateways
+  ##############################################################################
+  # Subnet
+  ##############################################################################
+  subnets = [
+    {
+      subnet      = "10.0.0.0/24"
+      zone        = "KR-1"
+      subnet_type = "PUBLIC"
+      name        = "tf-test-web-sbn"
+      usage_type  = "GEN"
+      network_acl = "default"
+    },
+    {
+      subnet      = "10.0.1.0/24"
+      zone        = "KR-1"
+      subnet_type = "PRIVATE"
+      name        = "tf-test-was-sbn"
+      usage_type  = "GEN"
+      network_acl = "default"
+    },
+    {
+      subnet      = "10.0.2.0/24"
+      zone        = "KR-1"
+      subnet_type = "PRIVATE"
+      name        = "tf-test-db-sbn"
+      usage_type  = "GEN"
+      network_acl = "default"
+    },
+    {
+      subnet      = "10.0.3.0/24"
+      zone        = "KR-1"
+      subnet_type = "PRIVATE"
+      name        = "tf-test-alb-sbn"
+      usage_type  = "LOADB"
+      network_acl = "default"
+    },
+    {
+      subnet      = "10.0.4.0/24"
+      zone        = "KR-1"
+      subnet_type = "PRIVATE"
+      name        = "tf-test-nlb-sbn"
+      usage_type  = "LOADB"
+      network_acl = "default"
+    }
+  ]
+
+  network_acls = [
+    {
+      name               = "default"
+      description        = "Default Network ACL"
+      inbound_acl_rules  = []
+      outbound_acl_rules = []
+    }
+  ]
+
+  ##############################################################################
+  # ACG
+  ##############################################################################
+  acgs = [
+    {
+      name           = "tf-test-web-svr-acg"
+      description    = "WEB Server ACG"
+      inbound_rules  = [var.acg_rules["ssh"], var.acg_rules["http"], var.acg_rules["https"]]
+      outbound_rules = [var.acg_rules["all"]]
+    },
+    {
+      name           = "tf-test-was-svr-acg"
+      description    = "WAS Server ACG"
+      inbound_rules  = [var.acg_rules["tomcat"]]
+      outbound_rules = []
+    },
+    {
+      name           = "tf-test-db-svr-acg"
+      description    = "DB Server ACG"
+      inbound_rules  = [var.acg_rules["mysql"]]
+      outbound_rules = []
+    }
+  ]
 }
 
 
@@ -27,60 +94,122 @@ module "vpcs" {
 # Server
 ################################################################################
 
-locals {
-  servers = var.servers
+/*
+resource "terraform_data" "create_svr_image" {
+  depends_on = [module.image_server]
 
-  flatten_servers = flatten([for server in local.servers :
-    [
-      for index in range(server.count) : merge(
-        { name = join("", [server.name_prefix, server.create_multiple ? format("-%02d", index + server.start_index) : ""]) },
-        { for attr_key, attr_val in server : attr_key => attr_val if(attr_key != "default_network_interface" && attr_key != "additional_block_storages") },
-        { default_network_interface = merge(server.default_network_interface, { name = join("", [
-          server.default_network_interface.name_prefix, server.create_multiple ? format("-%03d", index + server.start_index) : "", "-${server.default_network_interface.name_postfix}"]) })
-        },
-        { additional_block_storages = [for vol in server.additional_block_storages : merge(vol, { name = join("", [
-          vol.name_prefix, server.create_multiple ? format("-%03d", index + server.start_index) : "", "-${vol.name_postfix}"]) })]
-        }
-      )
-    ]
-  ])
+  triggers_replace = [timestamp()]
+
+  provisioner "local-exec" {
+    working_dir = "/home/yhpark/cli_linux"
+    command     = <<EOF
+      export INSTANCE_NO=${module.image_server.server.id}
+      ./ncloud vserver createMemberServerImageInstance --regionCode KR --serverInstanceNo $INSTANCE_NO --memberServerImageName tf-test-web-svr
+    EOF
+  }
+}
+*/
+
+module "tf_test_web_svr" {
+  source = "github.com/sadoruin/terraform-ncloud-server.git"
+
+  count = 2
+
+  name              = "tf-test-web-svr-${count.index}"
+  subnet_id         = module.tf_test_vpc.subnets["tf-test-web-sbn"].id
+  server_image_name = "Rocky Linux 8.8"
+  # member_server_image_name = "test"
+  product_generation = "G2"
+  product_type       = "High CPU"
+  product_name       = "vCPU 2EA, Memory 4GB, Disk 50GB"
+  login_key_name     = "yh-test-svr-key"
+
+  fee_system_type_code = "MTRAT"
+  init_script_no       = null
+
+  is_associate_public_ip                 = false
+  is_protect_server_termination          = false
+  is_encrypted_base_block_storage_volume = false
+
+  network_interfaces = [
+    {
+      name                  = "tf-test-web-svr-nic-${count.index}"
+      description           = "WEB Server NIC"
+      subnet_id             = module.tf_test_vpc.subnets["tf-test-web-sbn"].id
+      access_control_groups = [module.tf_test_vpc.acgs["tf-test-web-svr-acg"].id]
+      order                 = 0
+    }
+  ]
+
+  additional_block_storages = []
 }
 
-module "servers" {
-  source = "terraform-ncloud-modules/server/ncloud"
+module "tf_test_was_svr" {
+  source = "github.com/sadoruin/terraform-ncloud-server.git"
 
-  depends_on = [module.vpcs]
+  count = 2
 
-  for_each = { for server in local.flatten_servers : server.name => server }
+  name               = "tf-test-was-svr-${count.index}"
+  subnet_id          = module.tf_test_vpc.subnets["tf-test-was-sbn"].id
+  server_image_name  = "Rocky Linux 8.8"
+  product_generation = "G2"
+  product_type       = "High CPU"
+  product_name       = "vCPU 2EA, Memory 4GB, Disk 50GB"
+  login_key_name     = "yh-test-svr-key"
 
-  name        = each.value.name
-  description = each.value.description
+  fee_system_type_code = "MTRAT"
+  init_script_no       = null
 
-  // you can use "vpc_name" & "subnet_name". Then module will find "subnet_id" from "DataSource: ncloud_subnet".
-  vpc_name    = each.value.vpc_name
-  subnet_name = each.value.subnet_name
-  // or use only "subnet_id" instead for inter-module reference structure.
-  # subnet_id            = module.vpcs[each.value.vpc_name].subnets[each.value.subnet_name].id
+  is_associate_public_ip                 = false
+  is_protect_server_termination          = false
+  is_encrypted_base_block_storage_volume = false
 
-  login_key_name       = each.value.login_key_name
-  init_script_id       = each.value.init_script_id
-  fee_system_type_code = each.value.fee_system_type_code
-
-  server_image_name  = each.value.server_image_name
-  product_generation = each.value.product_generation
-  product_type       = each.value.product_type
-  product_name       = each.value.product_name
-
-  is_associate_public_ip                 = each.value.is_associate_public_ip
-  is_protect_server_termination          = each.value.is_protect_server_termination
-  is_encrypted_base_block_storage_volume = each.value.is_encrypted_base_block_storage_volume
-
-  default_network_interface = merge(each.value.default_network_interface, {
-    access_control_group_ids = [for acg_name in each.value.default_network_interface.access_control_groups : module.vpcs[each.value.vpc_name].access_control_groups[acg_name].id]
-  })
-
-  additional_block_storages = each.value.additional_block_storages
+  network_interfaces = [
+    {
+      name                  = "tf-test-was-svr-nic-${count.index}"
+      description           = "WAS Server NIC"
+      subnet_id             = module.tf_test_vpc.subnets["tf-test-was-sbn"].id
+      access_control_groups = [module.tf_test_vpc.acgs["tf-test-was-svr-acg"].id]
+      order                 = 0
+    }
+  ]
 }
+
+module "tf_test_db_svr" {
+  source = "github.com/sadoruin/terraform-ncloud-server.git"
+
+  count = 1
+
+  name               = "tf-test-db-svr-${count.index}"
+  subnet_id          = module.tf_test_vpc.subnets["tf-test-db-sbn"].id
+  server_image_name  = "mariadb(10.2)-centos-7.8-64"
+  product_generation = "G2"
+  product_type       = "High CPU"
+  product_name       = "vCPU 2EA, Memory 4GB, Disk 50GB"
+  login_key_name     = "yh-test-svr-key"
+
+  fee_system_type_code = "MTRAT"
+  init_script_no       = null
+
+  is_associate_public_ip                 = false
+  is_protect_server_termination          = false
+  is_encrypted_base_block_storage_volume = false
+
+  network_interfaces = [
+    {
+      name                  = "tf-test-db-svr-nic-${count.index}"
+      description           = "DB Server NIC"
+      subnet_id             = module.tf_test_vpc.subnets["tf-test-db-sbn"].id
+      access_control_groups = [module.tf_test_vpc.acgs["tf-test-db-svr-acg"].id]
+      order                 = 0
+    }
+  ]
+}
+
+
+################################################################################
+# Ansible
+################################################################################
 
 /*
 resource "ncloud_login_key" "ansible_test" {
@@ -118,70 +247,148 @@ resource "terraform_data" "ssh_config" {
 # Load Balancer
 ################################################################################
 
-locals {
-  load_balancers = var.load_balancers
+module "web_alb" {
+  source = "github.com/sadoruin/terraform-ncloud-load-balancer.git"
+
+  name            = "tf-test-web-alb"
+  network_type    = "PUBLIC"
+  idle_timeout    = 60
+  type            = "APPLICATION"
+  throughput_type = "SMALL"
+  subnet_no_list  = [module.tf_test_vpc.subnets["tf-test-alb-sbn"].id]
+
+  lb_listeners = [
+    {
+      protocol        = "HTTP"
+      port            = 80
+      target_group_no = module.target_groups.target_groups["tf-test-web-tg"].id
+    }
+  ]
 }
 
-module "load_balancers" {
-  source = "terraform-ncloud-modules/load-balancer/ncloud"
+module "was_nlb" {
+  source = "github.com/sadoruin/terraform-ncloud-load-balancer.git"
 
-  depends_on = [module.target_groups]
+  name            = "tf-test-was-nlb"
+  network_type    = "PRIVATE"
+  idle_timeout    = 60
+  type            = "NETWORK"
+  throughput_type = "SMALL"
+  subnet_no_list  = [module.tf_test_vpc.subnets["tf-test-nlb-sbn"].id]
 
-  for_each = { for lb in local.load_balancers : lb.name => lb }
-
-  name         = each.value.name
-  description  = each.value.description
-  type         = each.value.type
-  network_type = each.value.network_type
-
-  // you can use "vpc_name" & "subnet_name". Then module will find "subnet_id" from "DataSource: ncloud_subnet".
-  vpc_name     = each.value.vpc_name
-  subnet_names = each.value.subnet_names
-  // or "subnet_id" instead
-  # subnet_ids      = [ for subnet_name in each.value.subnet_names : module.vpcs[each.value.vpc_name].subnets[subnet_name].id ] 
-
-  throughput_type = each.value.throughput_type
-  idle_timeout    = each.value.idle_timeout
-
-  // you can use "listeners" with "target_group_name" as object attribute.
-  listeners = each.value.listeners
-  // or "listeners" with "target_group_id" instead.
-  # listeners       = [for listener in each.value.listeners : merge(
-  #   { for k, v in listener : k => v if k != "target_group_name" },
-  #   { target_group_id = module.target_groups[listener.target_group_name].target_group.id }
-  # )]
+  lb_listeners = [
+    {
+      protocol        = "TCP"
+      port            = 8080
+      target_group_no = module.target_groups.target_groups["tf-test-was-tg"].id
+    }
+  ]
 }
 
 
 ################################################################################
-# Target Group
+# Target Groups
 ################################################################################
-
-locals {
-  target_groups = var.target_groups
-}
 
 module "target_groups" {
-  source = "terraform-ncloud-modules/target-group/ncloud"
+  source = "github.com/sadoruin/terraform-ncloud-target-group.git"
 
-  depends_on = [module.vpcs, module.servers]
+  target_groups = [
+    {
+      vpc_id             = module.tf_test_vpc.vpc.id
+      name               = "tf-test-web-tg"
+      protocol           = "HTTP"
+      target_type        = "VSVR"
+      port               = 80
+      description        = "WEB Server Target Group"
+      use_sticky_session = true
+      use_proxy_protocol = false
+      algorithm_type     = "RR"
+      health_check = {
+        protocol       = "HTTP"
+        http_method    = "GET"
+        port           = 80
+        url_path       = "/"
+        cycle          = 30
+        up_threshold   = 2
+        down_threshold = 2
+      }
 
-  for_each = { for tg in local.target_groups : tg.name => tg }
+      target_no_list = [
+        for x in module.tf_test_web_svr : x.server.id
+      ]
+    },
+    {
+      vpc_id             = module.tf_test_vpc.vpc.id
+      name               = "tf-test-was-tg"
+      protocol           = "TCP"
+      target_type        = "VSVR"
+      port               = 8080
+      description        = "WAS Server Target Group"
+      use_sticky_session = true
+      use_proxy_protocol = false
+      algorithm_type     = "MH"
+      health_check = {
+        protocol       = "TCP"
+        port           = 8080
+        cycle          = 30
+        up_threshold   = 2
+        down_threshold = 2
+      }
 
-  name               = each.value.name
-  description        = each.value.description
-  vpc_name           = each.value.vpc_name
-  protocol           = each.value.protocol
-  port               = each.value.port
-  algorithm_type     = each.value.algorithm_type
-  use_sticky_session = each.value.use_sticky_session
-  use_proxy_protocol = each.value.use_proxy_protocol
-  target_type        = each.value.target_type
+      target_no_list = [
+        for x in module.tf_test_was_svr : x.server.id
+      ]
+    }
+  ]
+}
 
-  // you can use "target_instance_names". Then module will find "server_instance_no" from "DataSource: ncloud_server"
-  target_instance_names = [for x in module.servers : x.server.name if startswith(x.server.name, each.value.target_instance_names[0])]
-  // or "target_instance_ids" instead
-  # target_instance_ids   = [for instance_name in each.value.target_instance_names : module.servers[instance_name].server.id]
 
-  health_check = each.value.health_check
+################################################################################
+# Launch Configuration
+################################################################################
+
+module "lc" {
+  source = "github.com/sadoruin/terraform-ncloud-launch-configuration.git"
+
+  name                     = "tf-test-lc"
+  server_image_name        = "Rocky Linux 8.8"
+  member_server_image_name = null
+  product_generation       = "G2"
+  product_type             = "High CPU"
+  product_name             = "vCPU 2EA, Memory 4GB, Disk 50GB"
+  is_encrypted_volume      = false
+  init_script_no           = null
+  login_key_name           = "yh-test-svr-key"
+}
+
+
+################################################################################
+# Auto Scaling
+################################################################################
+
+module "asg" {
+  source = "github.com/sadoruin/terraform-ncloud-auto-scaling-group.git"
+
+  launch_configuration_no = module.lc.launch_configuration.id
+
+  name                    = "tf-test-asg"
+  subnet_no               = module.tf_test_vpc.subnets["tf-test-web-sbn"].id
+  server_name_prefix      = "web"
+  min_size                = 0
+  max_size                = 0
+  desired_capacity        = 0
+  ignore_capacity_changes = false
+
+  default_cooldown          = 300
+  health_check_grace_period = 300
+  health_check_type_code    = "LOADB"
+
+  access_control_group_no_list = [
+    module.tf_test_vpc.acgs["tf-test-web-svr-acg"].id
+  ]
+
+  target_group_list = [
+    module.target_groups.target_groups["tf-test-web-tg"].id
+  ]
 }
