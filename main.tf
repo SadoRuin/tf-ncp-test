@@ -113,33 +113,26 @@ resource "terraform_data" "create_svr_image" {
 module "tf_test_web_svr" {
   source = "github.com/sadoruin/terraform-ncloud-server.git"
 
-  count = 2
+  count = 1
 
-  name              = "tf-test-web-svr-${count.index}"
+  name              = "tf-test-web-svr-${format("%02d", count.index + 1)}"
   subnet_id         = module.tf_test_vpc.subnets["tf-test-web-sbn"].id
   server_image_name = "Rocky Linux 8.8"
-  # member_server_image_name = "test"
+  # member_server_image_name = "test-web"
   product_generation = "G2"
   product_type       = "High CPU"
   product_name       = "vCPU 2EA, Memory 4GB, Disk 50GB"
   login_key_name     = "yh-test-svr-key"
 
-  fee_system_type_code = "MTRAT"
-  init_script_no       = null
-
-  is_associate_public_ip                 = false
-  is_protect_server_termination          = false
-  is_encrypted_base_block_storage_volume = false
-
   network_interfaces = [
     {
-      name                  = "tf-test-web-svr-nic-${count.index}"
-      description           = "WEB Server NIC"
       subnet_id             = module.tf_test_vpc.subnets["tf-test-web-sbn"].id
       access_control_groups = [module.tf_test_vpc.acgs["tf-test-web-svr-acg"].id]
       order                 = 0
     }
   ]
+
+  is_associate_public_ip = false
 
   additional_block_storages = []
 }
@@ -147,27 +140,19 @@ module "tf_test_web_svr" {
 module "tf_test_was_svr" {
   source = "github.com/sadoruin/terraform-ncloud-server.git"
 
-  count = 2
+  count = 1
 
-  name               = "tf-test-was-svr-${count.index}"
-  subnet_id          = module.tf_test_vpc.subnets["tf-test-was-sbn"].id
-  server_image_name  = "Rocky Linux 8.8"
+  name              = "tf-test-was-svr-${format("%02d", count.index + 1)}"
+  subnet_id         = module.tf_test_vpc.subnets["tf-test-was-sbn"].id
+  server_image_name = "Rocky Linux 8.8"
+  # member_server_image_name = "packer-20231106012335"
   product_generation = "G2"
   product_type       = "High CPU"
   product_name       = "vCPU 2EA, Memory 4GB, Disk 50GB"
   login_key_name     = "yh-test-svr-key"
 
-  fee_system_type_code = "MTRAT"
-  init_script_no       = null
-
-  is_associate_public_ip                 = false
-  is_protect_server_termination          = false
-  is_encrypted_base_block_storage_volume = false
-
   network_interfaces = [
     {
-      name                  = "tf-test-was-svr-nic-${count.index}"
-      description           = "WAS Server NIC"
       subnet_id             = module.tf_test_vpc.subnets["tf-test-was-sbn"].id
       access_control_groups = [module.tf_test_vpc.acgs["tf-test-was-svr-acg"].id]
       order                 = 0
@@ -180,7 +165,7 @@ module "tf_test_db_svr" {
 
   count = 1
 
-  name               = "tf-test-db-svr-${count.index}"
+  name               = "tf-test-db-svr-${format("%02d", count.index + 1)}"
   subnet_id          = module.tf_test_vpc.subnets["tf-test-db-sbn"].id
   server_image_name  = "mariadb(10.2)-centos-7.8-64"
   product_generation = "G2"
@@ -188,17 +173,8 @@ module "tf_test_db_svr" {
   product_name       = "vCPU 2EA, Memory 4GB, Disk 50GB"
   login_key_name     = "yh-test-svr-key"
 
-  fee_system_type_code = "MTRAT"
-  init_script_no       = null
-
-  is_associate_public_ip                 = false
-  is_protect_server_termination          = false
-  is_encrypted_base_block_storage_volume = false
-
   network_interfaces = [
     {
-      name                  = "tf-test-db-svr-nic-${count.index}"
-      description           = "DB Server NIC"
       subnet_id             = module.tf_test_vpc.subnets["tf-test-db-sbn"].id
       access_control_groups = [module.tf_test_vpc.acgs["tf-test-db-svr-acg"].id]
       order                 = 0
@@ -295,23 +271,17 @@ module "target_groups" {
 
   target_groups = [
     {
-      vpc_id             = module.tf_test_vpc.vpc.id
-      name               = "tf-test-web-tg"
-      protocol           = "HTTP"
-      target_type        = "VSVR"
-      port               = 80
-      description        = "WEB Server Target Group"
-      use_sticky_session = true
-      use_proxy_protocol = false
-      algorithm_type     = "RR"
+      vpc_id      = module.tf_test_vpc.vpc.id
+      name        = "tf-test-web-tg"
+      protocol    = "HTTP"
+      target_type = "VSVR"
+      port        = 80
+      description = "WEB Server Target Group"
       health_check = {
-        protocol       = "HTTP"
-        http_method    = "GET"
-        port           = 80
-        url_path       = "/"
-        cycle          = 30
-        up_threshold   = 2
-        down_threshold = 2
+        protocol    = "HTTP"
+        http_method = "GET"
+        port        = 80
+        url_path    = "/"
       }
 
       target_no_list = [
@@ -319,21 +289,15 @@ module "target_groups" {
       ]
     },
     {
-      vpc_id             = module.tf_test_vpc.vpc.id
-      name               = "tf-test-was-tg"
-      protocol           = "TCP"
-      target_type        = "VSVR"
-      port               = 8080
-      description        = "WAS Server Target Group"
-      use_sticky_session = true
-      use_proxy_protocol = false
-      algorithm_type     = "MH"
+      vpc_id      = module.tf_test_vpc.vpc.id
+      name        = "tf-test-was-tg"
+      protocol    = "TCP"
+      target_type = "VSVR"
+      port        = 8080
+      description = "WAS Server Target Group"
       health_check = {
-        protocol       = "TCP"
-        port           = 8080
-        cycle          = 30
-        up_threshold   = 2
-        down_threshold = 2
+        protocol = "TCP"
+        port     = 8080
       }
 
       target_no_list = [
@@ -391,4 +355,28 @@ module "asg" {
   target_group_list = [
     module.target_groups.target_groups["tf-test-web-tg"].id
   ]
+
 }
+
+
+
+################################################################################
+# NAS Volume
+################################################################################
+
+module "nas_volumes" {
+  source = "github.com/sadoruin/terraform-ncloud-nas.git"
+
+  nas_volumes = [
+    {
+      volume_name_postfix            = "testnas"
+      volume_size                    = 500
+      volume_allotment_protocol_type = "NFS"
+      server_instance_no_list        = [for x in module.tf_test_web_svr : x.server.id]
+      zone                           = "KR-1"
+      is_return_protection           = false
+      is_encrypted_volume            = false
+    }
+  ]
+}
+
