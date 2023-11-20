@@ -69,21 +69,61 @@ module "tf_test_vpc" {
   ##############################################################################
   acgs = [
     {
-      name           = "tf-test-web-svr-acg"
-      description    = "WEB Server ACG"
-      inbound_rules  = [var.acg_rules["ssh"], var.acg_rules["http"], var.acg_rules["https"]]
-      outbound_rules = [var.acg_rules["all"]]
+      name        = "tf-test-web-svr-acg"
+      description = "WEB Server ACG"
+      inbound_rules = [
+        {
+          protocol    = "TCP"
+          ip_block    = "0.0.0.0/0"
+          port_range  = "22"
+          description = "SSH 접속 허용"
+        },
+        {
+          protocol    = "TCP"
+          ip_block    = "0.0.0.0/0"
+          port_range  = "80"
+          description = "HTTP 통신 허용"
+        },
+        {
+          protocol    = "TCP"
+          ip_block    = "0.0.0.0/0"
+          port_range  = "443"
+          description = "HTTPS 통신 허용"
+        }
+      ]
+      outbound_rules = [
+        {
+          protocol    = "TCP"
+          ip_block    = "0.0.0.0/0"
+          port_range  = "1-65535"
+          description = "모든 포트 허용"
+        }
+      ]
     },
     {
-      name           = "tf-test-was-svr-acg"
-      description    = "WAS Server ACG"
-      inbound_rules  = [var.acg_rules["tomcat"]]
+      name        = "tf-test-was-svr-acg"
+      description = "WAS Server ACG"
+      inbound_rules = [
+        {
+          protocol    = "TCP"
+          ip_block    = "0.0.0.0/0"
+          port_range  = "8080"
+          description = "Tomcat 포트 허용"
+        }
+      ]
       outbound_rules = []
     },
     {
-      name           = "tf-test-db-svr-acg"
-      description    = "DB Server ACG"
-      inbound_rules  = [var.acg_rules["mysql"]]
+      name        = "tf-test-db-svr-acg"
+      description = "DB Server ACG"
+      inbound_rules = [
+        {
+          protocol    = "TCP"
+          ip_block    = "0.0.0.0/0"
+          port_range  = "3306"
+          description = "MySQL 포트 허용"
+        }
+      ]
       outbound_rules = []
     }
   ]
@@ -94,30 +134,30 @@ module "tf_test_vpc" {
 # Server
 ################################################################################
 
-/*
-resource "terraform_data" "create_svr_image" {
-  depends_on = [module.image_server]
 
-  triggers_replace = [timestamp()]
+# resource "terraform_data" "create_svr_image" {
+#   depends_on = [module.image_server]
 
-  provisioner "local-exec" {
-    working_dir = "/home/yhpark/cli_linux"
-    command     = <<EOF
-      export INSTANCE_NO=${module.image_server.server.id}
-      ./ncloud vserver createMemberServerImageInstance --regionCode KR --serverInstanceNo $INSTANCE_NO --memberServerImageName tf-test-web-svr
-    EOF
-  }
-}
-*/
+#   triggers_replace = [timestamp()]
+
+#   provisioner "local-exec" {
+#     working_dir = "/home/yhpark/cli_linux"
+#     command     = <<EOF
+#       export INSTANCE_NO=${module.image_server.server.id}
+#       ./ncloud vserver createMemberServerImageInstance --regionCode KR --serverInstanceNo $INSTANCE_NO --memberServerImageName tf-test-web-svr
+#     EOF
+#   }
+# }
+
 
 module "tf_test_web_svr" {
   source = "github.com/sadoruin/terraform-ncloud-server.git"
 
-  count = 1
+  count = 2
 
   name              = "tf-test-web-svr-${format("%02d", count.index + 1)}"
   subnet_id         = module.tf_test_vpc.subnets["tf-test-web-sbn"].id
-  server_image_name = "Rocky Linux 8.8"
+  server_image_name = "CentOS 7.8 (64-bit)"
   # member_server_image_name = "test-web"
   product_generation = "G2"
   product_type       = "High CPU"
@@ -132,7 +172,7 @@ module "tf_test_web_svr" {
     }
   ]
 
-  is_associate_public_ip = false
+  is_associate_public_ip = true
 
   additional_block_storages = []
 }
@@ -140,7 +180,7 @@ module "tf_test_web_svr" {
 module "tf_test_was_svr" {
   source = "github.com/sadoruin/terraform-ncloud-server.git"
 
-  count = 1
+  count = 2
 
   name              = "tf-test-was-svr-${format("%02d", count.index + 1)}"
   subnet_id         = module.tf_test_vpc.subnets["tf-test-was-sbn"].id
@@ -187,36 +227,37 @@ module "tf_test_db_svr" {
 # Ansible
 ################################################################################
 
-/*
-resource "ncloud_login_key" "ansible_test" {
-  lifecycle {
-    prevent_destroy = true
-  }
-  key_name = "ansible-test"
-}
 
-data "ncloud_root_password" "root_pwd" {
-  server_instance_no = module.tf_test_web_svr[0].server_id
-  private_key        = ncloud_login_key.ansible_test.private_key
-}
+# resource "ncloud_login_key" "ansible_test" {
+#   lifecycle {
+#     prevent_destroy = true
+#   }
+#   key_name = "ansible-test"
+# }
 
-resource "terraform_data" "ssh_config" {
-  depends_on = [module.tf_test_web_svr[0]]
-  provisioner "local-exec" {
-    command = <<EOF
-      echo "[ncloud]" > ~/ansible/inventory
-      echo '${module.tf_test_web_svr[0].server_name} ansible_host=${module.tf_test_web_svr[0].public_ip} ansible_port=22 ansible_ssh_user=root ansible_ssh_pass=${data.ncloud_root_password.root_pwd.root_password}' >> ~/ansible/inventory
-    EOF
-  }
+# data "ncloud_root_password" "root_pwd" {
+#   count              = length(module.tf_test_web_svr)
+#   server_instance_no = module.tf_test_web_svr[count.index].server_id
+#   private_key        = ncloud_login_key.ansible_test.private_key
+# }
 
-  provisioner "local-exec" {
-    command = <<EOF
-      docker exec ansible /bin/sh -c ANSIBLE_HOST_KEY_CHECKING=False
-      docker exec ansible /bin/sh -c 'ansible-playbook -i /root/ansible/inventory /root/ansible/playbook-test.yml'
-    EOF
-  }
-}
-*/
+# resource "terraform_data" "ssh_config" {
+#   depends_on = [module.tf_test_web_svr[0]]
+#   provisioner "local-exec" {
+#     command = <<EOF
+#       echo "[ncloud]" > ~/ansible/inventory
+#       ${join("\n", [for i in range(length(module.tf_test_web_svr)) : "echo '${module.tf_test_web_svr[i].server_name} ansible_host=${module.tf_test_web_svr[i].public_ip} ansible_port=22 ansible_ssh_user=root ansible_ssh_pass=${data.ncloud_root_password.root_pwd[i].root_password}' >> ~/ansible/inventory"])}
+#     EOF
+#   }
+
+#   provisioner "local-exec" {
+#     command = <<EOF
+#       ANSIBLE_HOST_KEY_CHECKING=False
+#       ansible-playbook -i ~/ansible/inventory ~/ansible/exclude-kernel.yml
+#     EOF
+#   }
+# }
+
 
 
 ################################################################################
@@ -376,6 +417,43 @@ module "nas_volumes" {
       zone                           = "KR-1"
       is_return_protection           = false
       is_encrypted_volume            = false
+    }
+  ]
+}
+
+
+
+################################################################################
+# NKS
+################################################################################
+
+module "nks" {
+  source = "github.com/sadoruin/terraform-ncloud-nks.git"
+
+  name              = "test-cluster"
+  k8s_version       = "1.24.10"
+  vpc_id            = module.tf_test_vpc.vpc.id
+  zone              = "KR-1"
+  is_public_network = false
+  subnet_id_list = [
+    module.tf_test_vpc.subnets["tf-test-was-sbn"].id
+  ]
+  lb_private_subnet_id = module.tf_test_vpc.subnets["tf-test-nlb-sbn"].id
+  maximum_node_count   = 10
+  audit_log            = false
+  login_key_name       = "yh-test-svr-key"
+
+  node_pools = [
+    {
+      node_pool_name = "test-node-pool"
+      # k8s_version    = "1.24.10"
+      node_count     = 1
+      ubuntu_version = "18.04"
+      product_type   = "High CPU"
+      product_name   = "vCPU 2EA, Memory 4GB, [SSD]Disk 50GB"
+      subnet_id_list = [
+        module.tf_test_vpc.subnets["tf-test-was-sbn"].id
+      ]
     }
   ]
 }
